@@ -1,8 +1,38 @@
-# 👾 HoopRogue v0.2 — 战术大师 TACTICIAN
+# 👾 HoopRogue v0.3 — 战术大师 TACTICIAN
 
 > 原创篮球肉鸽 · **没有技能卡，只有战术板**。
-> 把《杀戮尖塔》的能量-意图-路线三件套搬到篮球场：读对手的意图 → 分配体能 → 克制博弈。
+> 杀戮尖塔式能量-意图-路线三件套搬到篮球场：读对手的意图 → 分配体能 → 克制博弈。
 > 策划书见 [docs/DESIGN.md](docs/DESIGN.md)。
+
+## 开始
+
+```bash
+cd HoopRogue
+
+python -m hooprogue                # 图形界面（tkinter）：我来指挥 / 观看 AI 教练
+python -m hooprogue --cli          # 终端模式
+python -m hooprogue --cli --auto   # 终端自动模式
+python -m hooprogue --manual       # 战术手册
+python -m hooprogue --selftest     # GUI 无头自检
+
+python -m unittest discover -s tests   # 15 个测试
+python tools/balance.py 100            # 平衡性标定
+```
+
+## 🤖 AI 教练（仿 AI 流式输出，零 API）
+
+观战模式下，AI 教练会像大模型流式输出一样"边想边打字"：
+
+```text
+📡 对方进攻意图: 外线远投 44% / 挡拆发起 31%
+⚡ 体能 5，考虑防守方案…
+✧ 盯人 正好克制对方 外线远投
+▶ 决策：🛡 盯人
+```
+
+关键设计：**解说的和做的是同一套逻辑**——`narrate.rank_*` 期望值函数
+既是 AI 的决策依据也是解说词的数据源，全部来自真实对局状态（不是编造台词），
+纯模板叙事、可离线、同种子同解说。
 
 ## 一局（Run）= 5 场，输一场就结束
 
@@ -51,20 +81,6 @@
 
 - **赛后加练（三选一）**：升级战术 Lv1→3（每级 +6%）/ 学习新战术（起始 4 个，最多 7 个）/ 球队特质（进攻篮板+10%、末节+8%、识破演技）
 - **赛前抉择（第 2 场起二选一）**：🏥 休整（体能+1）/ 🔍 情报（播报 100% 诚实）/ 🏟 主场（+4%）
-
-## 开始
-
-```bash
-cd HoopRogue
-
-python -m hooprogue              # 交互游玩
-python -m hooprogue --manual     # 查看战术手册
-python -m hooprogue --auto       # 自动模式（AI 按播报决策，测试/观战）
-python -m hooprogue --auto --quiet --seed 42   # 浓缩观战 + 可复现
-
-python -m unittest discover -s tests   # 13 个测试
-python tools/balance.py 100            # 平衡性标定（100局基准见下）
-```
 
 ## 平衡性标定（100 局 auto，全知决策的基准线）
 

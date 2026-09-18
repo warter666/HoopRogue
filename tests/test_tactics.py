@@ -135,5 +135,33 @@ class TestRun(unittest.TestCase):
         self.assertIsInstance(state.wins, int)
 
 
+class TestNarrate(unittest.TestCase):
+    """AI 教练：决策与解说共享同一期望值排序。"""
+
+    def _offense_phase(self):
+        from hooprogue.plays import PLAY_BY_ID
+        return dict(
+            kind="offense", stamina=5,
+            plays=[(PLAY_BY_ID["push"], 0.58, 0.10, True),
+                   (PLAY_BY_ID["perim"], 0.32, 0.08, True)],
+            telegraph={"man": 0.6, "zone": 0.4})
+
+    def test_rank_and_decision_consistent(self):
+        from hooprogue.narrate import narrate_offense, rank_offense
+        phase = self._offense_phase()
+        ranked = rank_offense(phase)
+        # perim vs 盯人: (0.42-0.10)*2 - 0.048 = 0.592 > push 0.52
+        self.assertEqual(ranked[0][0].id, "perim")
+        lines = narrate_offense(phase)
+        self.assertIn("▶ 决策：🎯 外线远投", lines[-1])
+
+    def test_empty_rank_falls_back(self):
+        from hooprogue.narrate import narrate_defense, rank_defense
+        phase = dict(kind="defense", stamina=0, schemes=[],
+                     telegraph={"push": 1.0})
+        self.assertEqual(rank_defense(phase), [])
+        self.assertIn("普通退防", narrate_defense(phase)[-1])
+
+
 if __name__ == "__main__":
     unittest.main()

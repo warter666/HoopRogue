@@ -11,6 +11,7 @@ import random
 from dataclasses import dataclass, field
 
 from .match import Match
+from .narrate import rank_defense, rank_offense
 from .opponent import make_opponent
 from .plays import (OFFENSE, PLAY_BY_ID, SCHEME_BY_ID, START_PLAYBOOK,
                     level_bonus, manual_lines)
@@ -65,27 +66,12 @@ class TacticianRun:
         return self._ask_action(phase, "scheme")
 
     def _auto_action(self, phase: dict) -> dict:
+        """AI 决策：与 AI 教练解说共享同一套期望值排序（narrate.rank_*）。"""
         if phase["kind"] == "offense":
-            best, best_val = None, -9.0
-            for play, p_make, p_to, afford in phase["plays"]:
-                if not afford:
-                    continue
-                val = p_make * play.pts - 0.6 * p_to
-                if val > best_val:
-                    best, best_val = play, val
-            if best is None:   # 只有不可选项 → 被迫勉强出手
-                best = next(o for o in phase["plays"] if o[3])[0]
-            return {"id": best.id}
-        best, best_val = None, 9.0
-        for scheme, opp_make, opp_to, afford in phase["schemes"]:
-            if not afford:
-                continue
-            val = opp_make + 0.5 * opp_to
-            if val < best_val:
-                best, best_val = scheme, val
-        if best is None:
-            best = next(o for o in phase["schemes"] if o[3])[0]
-        return {"id": best.id}
+            ranked = rank_offense(phase)
+            return {"id": ranked[0][0].id} if ranked else {"id": "heave"}
+        ranked = rank_defense(phase)
+        return {"id": ranked[0][0].id} if ranked else {"id": "stock"}
 
     def _ask_action(self, phase: dict, kind: str) -> dict:
         tg = phase["telegraph"]
