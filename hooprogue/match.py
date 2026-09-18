@@ -1,7 +1,8 @@
-"""逐回合攻防的比赛引擎。
+"""一场比赛：街球规则先到 N 分，4 节 × 每节 3 个攻防回合。
 
-一场比赛 = 4 节 × 每节 8 个回合，双方交替球权。
-卡牌效果全部在回合级别生效（护盾 / 热手 / 快攻 / 关键时刻…）。
+核心循环（每回合一次决策）：
+  意图播报（含演技）→ 玩家选战术/方案（受体能约束）→ 概率公开结算。
+所有概率在决策前完全公开——胜负取决于决策质量，不是抽卡。
 """
 
 from __future__ import annotations
@@ -9,228 +10,229 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-from .cards import Mods
-from .player import Archetype, Opponent, clamp, opp_defense, opp_stats
+from .opponent import DEF_WEIGHTS, Opponent
+from .plays import (DEFENSE, HEAVE, OFFENSE, PLAY_BY_ID, SCHEME_BY_ID,
+                    level_bonus, matchup)
 
-POSS_PER_Q = 8
-QUARTERS = 4
-TEMPOS = ("slow", "balanced", "fast")
-TEMPO_NAME = {"slow": "稳扎稳打", "balanced": "均衡节奏", "fast": "极速跑轰"}
+QTRS = 4
+POSS_PER_Q = 3
+PLAYER_STAMINA = 5   # 攻防共用的每节体能池（3次进攻+3次防守 ≈ 4.6 点消耗）
+ORB_BASE = 0.25       # 进攻篮板率（打铁后夺回球权 → 自动补篮）
+PUTBACK_P = 0.55
+SUDDEN_DEATH_CAP = 12  # 骤死回合对数上限（之后掷签）
+_TOTAL_DEF_W = sum(DEF_WEIGHTS.values())
+DEF_WEIGHTS_NORM = {k: v / _TOTAL_DEF_W for k, v in DEF_WEIGHTS.items()}
 
 
 @dataclass
-class BoxScore:
+class SideState:
     pts: int = 0
-    fga: int = 0
-    fgm: int = 0
-    tpa: int = 0
-    tpm: int = 0
-    tov: int = 0
-    reb: int = 0
     q_pts: list = field(default_factory=list)
+    stamina: int = 3
+    turnovers: int = 0
 
 
 @dataclass
 class MatchResult:
     won: bool
-    margin: int
-    us: BoxScore
-    them: BoxScore
+    player_pts: int
+    opp_pts: int
+    log: list
 
 
 class Match:
-    def __init__(self, arch: Archetype, mods: Mods, extra_bonus: float,
-                 opp: Opponent, rng: random.Random, tempo: str = "balanced",
-                 log=print, halftime_fn=None):
-        self.arch = arch
-        self.mods = mods
-        self.extra_bonus = extra_bonus   # 卡池抽空后的士气加成等
+    def __init__(self, playbook: dict, perks: dict, opp: Opponent,
+                 rng: random.Random, boons: dict | None = None,
+                 log=print, chooser=None):
+        """chooser(phase: dict) -> dict  决策回调（交互/Auto 各自实现）。
+
+        phase(kind="offense"): {"plays": [(play, p_make, p_to, afford)...],
+                                "telegraph": {scheme_id: p}, "stamina": int}
+        phase(kind="defense"): {"schemes": [...], "telegraph": {play_id: p},
+                                "stamina": int}
+        返回 {"id": play_id/scheme_id}
+        """
+        self.playbook = playbook          # {play_id: level}
+        self.perks = perks                # {"orb":0,"clutch":0,"insight":0}
         self.opp = opp
         self.rng = rng
-        self.tempo = tempo if tempo in TEMPOS else "balanced"
+        self.boons = boons or {}          # {"rest":bool,"intel":bool,"home":bool}
         self.log = log
-        self.halftime_fn = halftime_fn
-
-        self.us = BoxScore()
-        self.them = BoxScore()
-        self.shield = 0
-        self.heat = 0
-        self.opp_st = opp_stats(opp)
-        self.opp_def = opp_defense(opp)
-
-        # 精英防守：高评分对手会针对性布防——掐断二次进攻与快攻（额外球权），
-        # 并部分抵消卡牌加成。这是对抗玩家"卡牌雪球"的主要手段，
-        # 否则对手数值被钳制上限封顶后，后期形同虚设。
-        self.elite = clamp((opp.rating - 70.0) / 40.0, 0.0, 1.0)
-        self.bonus_scale = 1.0 - 0.4 * self.elite
-        self.extra_poss_scale = 1.0 - 0.5 * self.elite
-
-        # 节奏修正
-        self.tov_mult = {"slow": 0.85, "balanced": 1.0, "fast": 1.25}[self.tempo]
-        self.tend_add = {"slow": -0.08, "balanced": 0.0, "fast": 0.10}[self.tempo]
-        self.fb_add = {"slow": -0.15, "balanced": 0.0, "fast": 0.10}[self.tempo]
-
-        # Boss 特性修正
-        t = opp.trait_id
-        self.us_three_mod = -0.08 if t == "zone" else 0.0
-        self.us_two_mod = -0.08 if t == "towers" else 0.0
-        self.us_all_mod = -0.05 if t == "mvp" else 0.0
-        self.tov_press_mult = 1.6 if t == "press" else 1.0
-        self.opp_make_bonus = 0.03 if t == "mvp" else 0.0
-        self.opp_reb_bonus = 0.10 if t == "towers" else 0.0
-
-        self.second_half_off = 0.0   # 中场暂停选择的效果
-        self.second_half_def = 0.0
+        self.chooser = chooser
+        self.us = SideState()
+        self.them = SideState()
         self._q = 1
-        self._clutch = False
-        self._clutch_shown = False
 
     # ------------------------------------------------------------------ 主流程
     def play(self) -> MatchResult:
-        self.log(f"\n  ⚔ 对阵 {self.opp.name}（评分 {self.opp.rating}）"
-                 f"  ·  节奏：{TEMPO_NAME[self.tempo]}")
+        self.log(f"\n  ⚔ {self.opp.name}（评分 {self.opp.rating}）"
+                 f"  ·  街球规则：先到 {self.opp.target} 分")
         if self.opp.is_boss:
-            self.log(f"  ☠ BOSS 特性【{self.opp.trait_name}】：{self.opp.trait_desc}")
-        total = QUARTERS * POSS_PER_Q
-        done = 0
-        for q in range(1, QUARTERS + 1):
+            self.log("  ☠ BOSS：会演戏的播报 + 每节多 1 点体能")
+        for q in range(1, QTRS + 1):
             self._q = q
+            self.us.stamina = PLAYER_STAMINA + (1 if self.boons.get("rest") else 0)
+            self.them.stamina = self.opp.stamina_per_q
             self.us.q_pts.append(0)
             self.them.q_pts.append(0)
-            if q == 3:
-                self._halftime()
-            we_start = q % 2 == 1
-            for _ in range(POSS_PER_Q):
-                done += 1
-                self._clutch = (q == QUARTERS and total - done < POSS_PER_Q)
-                if self._clutch and not self._clutch_shown:
-                    self.log("  ⏱️ 关键时刻！")
-                    self._clutch_shown = True
-                if we_start:
-                    self.poss_us()
-                    self.poss_them()
+            if q == QTRS:
+                self.log("  ⏱ 末节：关键时刻")
+            player_first = q % 2 == 1
+            self._def_poss_in_q = 0
+            for i in range(POSS_PER_Q):
+                self._def_poss_in_q = i
+                if player_first:
+                    self.poss_player_offense()
+                    self.poss_player_defense()
                 else:
-                    self.poss_them()
-                    self.poss_us()
-            self.log(f"  ── Q{q} 结束 ──  我方 {self.us.pts} : {self.them.pts} 对方")
+                    self.poss_player_defense()
+                    self.poss_player_offense()
+                if self.us.pts >= self.opp.target or self.them.pts >= self.opp.target:
+                    break
+            self.log(f"  ── Q{q} 结束 ──  我方 {self.us.pts} : {self.them.pts} 对方"
+                     f"  （目标 {self.opp.target}）")
+            if self.us.pts >= self.opp.target or self.them.pts >= self.opp.target:
+                break
+        # 回合耗尽未达标：比分高者胜；平分 → 骤死回合（有上限保险）
+        pairs = 0
+        while self.us.pts == self.them.pts:
+            pairs += 1
+            if pairs > SUDDEN_DEATH_CAP:
+                self.log("  🎲 连续骤死未分胜负，掷签决定球权归属")
+                if self.rng.random() < 0.5:
+                    self._score_us(1, "  ▶ 掷签得手 +1")
+                else:
+                    self._score_them(1, "  ◀ 掷签得手 +1")
+                break
+            self.log("  ⚡ 骤死回合！")
+            self.poss_player_defense()
+            if self.us.pts != self.them.pts:
+                break
+            self.poss_player_offense()
         won = self.us.pts > self.them.pts
-        return MatchResult(won=won, margin=self.us.pts - self.them.pts,
-                           us=self.us, them=self.them)
+        return MatchResult(won=won, player_pts=self.us.pts, opp_pts=self.them.pts,
+                           log=[])
 
-    def _halftime(self):
-        self.log(f"  ── 中场 ──  我方 {self.us.pts} : {self.them.pts} 对方")
-        choice = None
-        if self.halftime_fn is not None:
-            choice = self.halftime_fn(self)
-        if choice == "offense":
-            self.second_half_off = 0.05
-            self.log("  📣 暂停布置：下半场加强进攻（命中率 +5%）")
-        elif choice == "defense":
-            self.second_half_def = 0.05
-            self.log("  📣 暂停布置：下半场收缩防守（对方命中率 -5%）")
-        else:
-            self.log("  （没有叫暂停）")
+    # ------------------------------------------------------------------ 我方进攻
+    def poss_player_offense(self):
+        # 对手先暗中选定防守方案，并给出（可能失真的）播报
+        scheme = self.opp.choose_defense_scheme(self.them.stamina, self.rng)
+        self.them.stamina -= scheme.cost
+        shown = self._shown_defense_dist(scheme)
+        clutch = self.perks.get("clutch", 0.0) if self._q == QTRS else 0.0
 
-    # ------------------------------------------------------------------ 我方回合
-    def poss_us(self, fast: bool = False, depth: int = 0):
-        m, rng = self.mods, self.rng
-
-        if not fast and rng.random() < self._us_tov_p():
-            self.us.tov += 1
-            self.log("  ▶ ✗ 失误，球权转换")
-            return
-
-        tend = clamp(self.arch.three_tendency + m.tendency_bonus * self.bonus_scale
-                     + self.tend_add, 0.05, 0.85)
-        is_three = rng.random() < tend
-
-        if is_three:
-            p = self.arch.three + (m.three_bonus + self.us_three_mod) * self.bonus_scale
-        else:
-            p = self.arch.two + (m.two_bonus + self.us_two_mod) * self.bonus_scale
-        p += ((m.all_bonus + self.extra_bonus + self.us_all_mod) * self.bonus_scale
-              + self.second_half_off)
-        p -= self.opp_def
-        if m.heat_on and self.heat > 0:
-            p += min(self.heat * 0.03, 0.15) * self.bonus_scale
-        if self._clutch:
-            p += m.clutch_bonus * self.bonus_scale
-        hot = ""
-        if not fast and m.ankle_chance and rng.random() < m.ankle_chance:
-            p += m.ankle_bonus * self.bonus_scale
-            hot = "🌀晃倒防守人！"
-        p = clamp(p, 0.03, 0.95)
-
-        self.us.fga += 1
-        if is_three:
-            self.us.tpa += 1
-        made = rng.random() < p
-        if made:
-            self.us.fgm += 1
-            if is_three:
-                self.us.tpm += 1
-            pts = 3 if is_three else 2
-            self.us.pts += pts
-            self.us.q_pts[-1] += pts
-            self.heat += 1
-            tag = "🔥" if m.heat_on and self.heat >= 3 else ""
-            self.log(f"  ▶ {'⚡快攻' if fast else ''}{hot}"
-                     f"{'三分命中' if is_three else '两分命中'} +{pts} {tag}"
-                     f"   【{self.us.pts}:{self.them.pts}】")
-        else:
-            self.heat = 0
-            self.log(f"  ▶ ✗ 打铁{'（快攻上丢）' if fast else ''}")
-            if depth < 3 and rng.random() < (self.arch.off_reb + m.off_reb_bonus) * self.extra_poss_scale:
-                self.us.reb += 1
-                self.log("  ▶ ↻ 进攻篮板！额外球权")
-                self.poss_us(depth=depth + 1)
-
-    def _us_tov_p(self) -> float:
-        m = self.mods
-        return clamp(self.arch.tov * m.tov_mult * self.tov_mult * self.tov_press_mult,
-                     0.01, 0.45)
-
-    # ------------------------------------------------------------------ 对方回合
-    def poss_them(self, depth: int = 0):
-        m, rng = self.mods, self.rng
-        st = self.opp_st
-
-        if rng.random() < st["tov"] / self.tov_press_mult:
-            self.them.tov += 1
-            self.log("  ◀ ★ 逼出对方失误！")
-            self._fast_break_chance()
-            return
-
-        is_three = rng.random() < 0.32
-        p = ((st["three"] if is_three else st["two"]) + self.opp_make_bonus
-             - (self.arch.defense - 0.55) * 0.05 - self.second_half_def)
-        p = clamp(p, 0.03, 0.95)
-
-        if rng.random() < p:
-            pts = 3 if is_three else 2
-            if m.shield_on and self.shield > 0:
-                self.shield -= 1
-                self.log(f"  ◀ 🧱 护盾抵挡对方 +{pts}！（剩余 {self.shield}）"
-                         f"   【{self.us.pts}:{self.them.pts}】")
+        opts = []
+        for p in OFFENSE:
+            if self.playbook.get(p.id):
+                lv = self.playbook[p.id]
             else:
-                self.them.pts += pts
-                self.them.q_pts[-1] += pts
-                self.log(f"  ◀ ✗ 对方{'三分' if is_three else '两分'}命中 +{pts}"
-                         f"   【{self.us.pts}:{self.them.pts}】")
-        else:
-            self.log("  ◀ 🛡 防守成功")
-            if m.shield_on and self.shield < 3:
-                self.shield += 1
-                self.log(f"  ◀ 🧱 护盾充能 +1（{self.shield}/3）")
-            if depth < 3 and rng.random() < st["off_reb"] + self.opp_reb_bonus:
-                self.them.reb += 1
-                self.log("  ◀ ✗ 对方抢到进攻篮板")
-                self.poss_them(depth=depth + 1)
-            else:
-                self._fast_break_chance()
+                continue
+            afford = p.cost <= self.us.stamina
+            mm, tm = matchup(p.id, scheme.id) if p.id != "iso" else (0.0, 0.0)
+            p_make = min(0.95, max(0.03, p.base + level_bonus(lv) + mm
+                                   + (0.04 if self.boons.get("home") else 0.0)
+                                   + clutch))
+            p_to = min(0.5, p.tov + tm + scheme.to_mod_all)
+            opts.append((p, p_make, p_to, afford))
+        if not any(o[3] for o in opts):
+            opts = [(HEAVE, HEAVE.base, HEAVE.tov, True)]
+        phase = dict(kind="offense", plays=opts, telegraph=shown,
+                     stamina=self.us.stamina)
+        pick = self.chooser(phase)
+        play = PLAY_BY_ID.get(pick["id"], HEAVE)
+        assert play.cost <= self.us.stamina or play.id == "heave"
+        self.us.stamina -= play.cost
+        self.opp.record_player_play(play.id)
 
-    def _fast_break_chance(self):
-        chance = (self.mods.fb_chance + self.fb_add) * self.extra_poss_scale
-        if chance > 0 and self.rng.random() < chance:
-            self.log("  ▶ ⚡ FAST BREAK！防守反击一条龙")
-            self.poss_us(fast=True)
+        entry = next(o for o in opts if o[0].id == play.id)
+        _, p_make, p_to, _ = entry
+        roll = self.rng.random()
+        if roll < p_to:
+            self.us.turnovers += 1
+            self.log(f"  ▶ {play.icon} {play.name} ✗ 失误！球权转换")
+            return
+        if roll < p_to + p_make:
+            self._score_us(play.pts, f"▶ {play.icon} {play.name} ✓ +{play.pts}")
+            return
+        # 打铁 → 进攻篮板 → 自动补篮
+        if self.rng.random() < ORB_BASE + self.perks.get("orb", 0.0):
+            self.log(f"  ▶ {play.icon} {play.name} ✗ 打铁… ↻ 前场篮板！")
+            if self.rng.random() < PUTBACK_P:
+                self._score_us(1, "  ▶ ↻ 补篮得手 +1")
+            else:
+                self.log("  ▶ ↻ 补篮不中")
+        else:
+            self.log(f"  ▶ {play.icon} {play.name} ✗ 打铁，对方篮板")
+
+    def _shown_defense_dist(self, actual) -> dict:
+        """对手防守方案播报：播报其防守策略权重（带噪声/演技）。
+
+        情报 boon（intel）直接揭示本回合的实际方案；
+        「识破演技」特质把播报噪声减半。
+        """
+        if self.boons.get("intel"):
+            return {actual.id: 1.0}
+        noise = 0.06 if self.perks.get("insight") else 0.12
+        return self.opp.telegraph(DEF_WEIGHTS_NORM, self.rng, noise=noise)
+
+    # ------------------------------------------------------------------ 我方防守
+    def poss_player_defense(self):
+        # 对手先选定进攻战术并（失真地）播报；AI 会为非末回合预留体能
+        is_last = (self._def_poss_in_q >= POSS_PER_Q - 1)
+        play = self.opp.choose_offense_play(self.them.stamina, is_last, self.rng)
+        if play is None:
+            self.log("  ◀ 对方体能枯竭，勉强出手")
+            play = HEAVE
+        self.them.stamina -= play.cost
+        telegraph = self._shown_offense_dist(play)
+        clutch_opp = 0.05 if (self.opp.is_boss and self._q == QTRS) else 0.0
+
+        opts = []
+        for s in DEFENSE:
+            afford = s.cost <= self.us.stamina
+            mm, tm = matchup(play.id, s.id)
+            opp_make = min(0.95, max(0.03,
+                          play.base * self.opp.base_mult + mm + clutch_opp))
+            opp_to = min(0.5, play.tov + tm + s.to_mod_all)
+            opts.append((s, opp_make, opp_to, afford))
+        phase = dict(kind="defense", schemes=opts, telegraph=telegraph,
+                     stamina=self.us.stamina)
+        pick = self.chooser(phase)
+        scheme = SCHEME_BY_ID[pick["id"]]
+        assert scheme.cost <= self.us.stamina
+        self.us.stamina -= scheme.cost
+        self.opp.last_player_scheme = scheme.id
+
+        entry = next(o for o in opts if o[0].id == scheme.id)
+        _, opp_make, opp_to, _ = entry
+        roll = self.rng.random()
+        if roll < opp_to:
+            self.log(f"  ◀ {scheme.icon} {scheme.name} ★ 逼出对方失误！")
+            return
+        if roll < opp_to + opp_make:
+            self._score_them(play.pts,
+                             f"◀ ✗ 对方 {play.icon} {play.name} 得手 +{play.pts}")
+            return
+        if self.rng.random() < ORB_BASE - 0.02 + (self.opp.rating - 42) * 0.002:
+            self.log(f"  ◀ {scheme.icon} {scheme.name} 打铁… 对方前场篮板")
+            if self.rng.random() < PUTBACK_P - 0.05:
+                self._score_them(1, "  ◀ 对方补篮 +1")
+        else:
+            self.log(f"  ◀ {scheme.icon} {scheme.name} 防守成功！")
+
+    def _shown_offense_dist(self, actual) -> dict:
+        if self.boons.get("intel"):
+            return {actual.id: 1.0}
+        noise = 0.06 if self.perks.get("insight") else 0.12
+        return self.opp.telegraph(self.opp.offense_weights, self.rng, noise=noise)
+
+    # ------------------------------------------------------------------ 记分
+    def _score_us(self, pts, text):
+        self.us.pts += pts
+        self.us.q_pts[-1] += pts
+        self.log(f"{text}   【{self.us.pts}:{self.them.pts}】")
+
+    def _score_them(self, pts, text):
+        self.them.pts += pts
+        self.them.q_pts[-1] += pts
+        self.log(f"{text}   【{self.us.pts}:{self.them.pts}】")

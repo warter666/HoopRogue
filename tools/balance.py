@@ -1,34 +1,40 @@
-"""平衡性抽查：批量自动跑局，统计胜场分布。
+"""平衡性抽查：批量 auto 跑局，统计每场胜率与夺冠率。
 
 用法: python tools/balance.py [局数]
 """
 
 import sys
-from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from hooprogue.game import Game  # noqa: E402
+from hooprogue.run import TacticianRun  # noqa: E402
 
 
 def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 40
-    hist = Counter()
+    reach = [0] * 6      # 到达第 k 场的局数（下标 1~5）
+    won = [0] * 6        # 在第 k 场获胜的局数
     champ = 0
     total_wins = 0
+    ends = [0] * 6       # 在第 k 场出局的局数
     for seed in range(1, n + 1):
-        g = Game(seed=seed, auto=True, quiet=True)
-        g.log = lambda *_: None
-        run = g.start()
-        hist[run.wins] += 1
-        total_wins += run.wins
-        champ += int(run.wins >= 12)
-    print(f"局数 {n} · 平均胜场 {total_wins / n:.2f} · 夺冠 {champ}")
-    for wins in range(0, 13):
-        if hist[wins]:
-            bar = "█" * hist[wins]
-            print(f"  {wins:>2} 胜  {bar} {hist[wins]}")
+        r = TacticianRun(seed=seed, auto=True, quiet=True)
+        r.log = lambda *_: None
+        s = r.start()
+        total_wins += s.wins
+        champ += int(s.champion)
+        for k in range(1, 6):
+            if s.game_idx + 1 >= k or s.champion:
+                reach[k] += 1
+            if s.wins >= k:
+                won[k] += 1
+        if not s.champion:
+            ends[s.game_idx + 1] += 1
+    print(f"局数 {n} · 平均胜场 {total_wins / n:.2f} · 夺冠 {champ} ({champ / n:.0%})")
+    for k in range(1, 6):
+        rate = (won[k] / reach[k]) if reach[k] else 0.0
+        print(f"  第{k}场  到达 {reach[k]:>4}  胜率 {rate:.0%}  出局 {ends[k]}")
 
 
 if __name__ == "__main__":
