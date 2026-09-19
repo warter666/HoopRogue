@@ -131,7 +131,7 @@ class TacticianRun:
                          f"{result.opp_pts}）")
                 if game == WIN_TARGET_GAMES - 1:
                     self.run.champion = True
-                    self._championship()
+                    self._championship(result)
                     break
                 self._practice()
             else:
@@ -188,17 +188,30 @@ class TacticianRun:
             self.run.perks[key] = {"orb": 0.10, "clutch": 0.08}[key]
             self.log("  习得球队特质")
 
-    def _championship(self):
+    def _championship(self, result):
         self.log(f"\n{'═' * 58}")
         self.log("  ★ 冠军 · CHAMPION ★")
         self.log(f"  5 场全胜封王！战术板：{self.run.playbook}")
+        note = self._scout_note(result)
+        if note:
+            self.log(note)
         self.log("═" * 58)
+
+    def _scout_note(self, result) -> str:
+        if not getattr(result, "opp_usage", None):
+            return ""
+        top = sorted(result.opp_usage.items(), key=lambda kv: -kv[1])[:4]
+        return ("  侦察备忘 · 本场对手战术倾向: "
+                + "  ".join(f"{k} x{v}" for k, v in top))
 
     def _game_over(self, result):
         self.log(f"\n{'═' * 58}")
         self.log(f"  RUN OVER —— 第 {self.run.game_idx + 1} 场落败"
                  f"（{result.player_pts}:{result.opp_pts}）")
         self.log(f"  战绩 {self.run.wins} 胜")
+        note = self._scout_note(result)
+        if note:
+            self.log(note)
         self.log("═" * 58)
 
 

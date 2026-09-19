@@ -38,6 +38,7 @@ class MatchResult:
     player_pts: int
     opp_pts: int
     log: list
+    opp_usage: dict = field(default_factory=dict)   # 对手战术使用统计（侦察备忘）
 
 
 class Match:
@@ -61,6 +62,7 @@ class Match:
         self.chooser = chooser
         self.us = SideState()
         self.them = SideState()
+        self.opp_usage: dict = {}    # 对手实际使用的战术统计（侦察备忘用）
         self._q = 1
 
     # ------------------------------------------------------------------ 主流程
@@ -111,7 +113,7 @@ class Match:
             self.poss_player_offense()
         won = self.us.pts > self.them.pts
         return MatchResult(won=won, player_pts=self.us.pts, opp_pts=self.them.pts,
-                           log=[])
+                           log=[], opp_usage=self.opp_usage)
 
     # ------------------------------------------------------------------ 我方进攻
     def poss_player_offense(self):
@@ -184,6 +186,7 @@ class Match:
             self.log("  ◀ 对方体能枯竭，勉强出手")
             play = HEAVE
         self.them.stamina -= play.cost
+        self.opp_usage[play.name] = self.opp_usage.get(play.name, 0) + 1
         telegraph = self._shown_offense_dist(play)
         clutch_opp = 0.05 if (self.opp.is_boss and self._q == QTRS) else 0.0
 

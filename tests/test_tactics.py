@@ -99,6 +99,11 @@ class TestMatch(unittest.TestCase):
         for phase in picks["off"]:
             self.assertTrue(any(o[3] for o in phase["plays"]))
 
+    def test_opponent_usage_tracked(self):
+        _m, r, _p = self._play(seed=6)
+        # 对手 12+ 个防守回合都有实际战术记录（侦察备忘的数据源）
+        self.assertGreaterEqual(sum(r.opp_usage.values()), 10)
+
 
 class TestRun(unittest.TestCase):
     def test_auto_run_completes(self):
