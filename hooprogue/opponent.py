@@ -67,6 +67,10 @@ class Opponent:
     def record_player_play(self, play_id: str):
         self.player_usage[play_id] = self.player_usage.get(play_id, 0) + 1
 
+    def scouting_report(self) -> str:
+        """赛前侦察报告：把 personality 变成玩家可读的情报。"""
+        return f"赛前侦察 · {self.name}：{self.style_name} —— {self.style_hint}"
+
     # ------------------------------------------------------------ 决策
     def choose_offense_play(self, stamina: int, is_last: bool,
                             rng: random.Random):
