@@ -1,7 +1,6 @@
-"""CLI 入口：python -m hooprogue [--gui] [--auto] [--seed N] [--speed X]
+"""CLI 入口：python -m hooprogue [--auto] [--seed N] [--speed X] [--manual]
 
-默认终端流式模式：所有输出打字机化，节奏随得分/失分变化。
---gui 保留 tkinter 图形界面（可选）。
+终端流式模式是唯一前端：所有输出打字机化，节奏随得分/失分变化。
 """
 
 from __future__ import annotations
@@ -18,9 +17,7 @@ def main(argv=None) -> int:
         except Exception:
             pass
     ap = argparse.ArgumentParser(
-        prog="hooprogue", description="HoopRogue v0.4 · 战术大师 TACTICIAN")
-    ap.add_argument("--gui", action="store_true",
-                    help="tkinter 图形界面（默认终端流式模式）")
+        prog="hooprogue", description="HoopRogue v0.5 · 战术大师 TACTICIAN")
     ap.add_argument("--auto", action="store_true",
                     help="自动模式：AI 教练流式解说并决策（观战）")
     ap.add_argument("--quiet", action="store_true",
@@ -29,25 +26,13 @@ def main(argv=None) -> int:
     ap.add_argument("--speed", type=float, default=1.0,
                     help="流式输出速度倍率（0.3 快进 / 0 瞬时）")
     ap.add_argument("--manual", action="store_true", help="查看战术手册后退出")
-    ap.add_argument("--selftest", action="store_true", help="GUI 无头自检")
     args = ap.parse_args(argv)
 
-    if args.selftest:
-        from .gui import run_selftest
-        return 0 if run_selftest() else 1
     if args.manual:
         from .plays import manual_lines
         for line in manual_lines():
             print(line)
         return 0
-
-    if args.gui:
-        try:
-            from .gui import run_gui
-            run_gui(args.seed)
-            return 0
-        except Exception as e:
-            print(f"图形界面不可用（{e}），切换到终端模式。\n")
 
     from .run import TacticianRun, attach_coach
     from .streamer import TermStreamer
