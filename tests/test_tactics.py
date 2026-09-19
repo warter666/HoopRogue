@@ -49,6 +49,17 @@ class TestTelegraph(unittest.TestCase):
                 hits += 1
         self.assertGreater(hits, 30)
 
+    def test_personality_is_scoutable(self):
+        opp = self._opp(0)
+        self.assertIn(opp.style_id, {"outside", "inside", "balanced"})
+        self.assertIn(opp.style_name, opp.scouting_report())
+        self.assertIn(opp.style_hint, opp.scouting_report())
+
+    def test_same_seed_keeps_personality(self):
+        a = make_opponent(2, random.Random(17))
+        b = make_opponent(2, random.Random(17))
+        self.assertEqual((a.style_id, a.style_name), (b.style_id, b.style_name))
+
     def test_boss_bluffs_sometimes(self):
         opp = self._opp(4)
         self.assertGreaterEqual(opp.bluff_p, 0.30)
@@ -112,6 +123,13 @@ class TestRun(unittest.TestCase):
         state = run.start()
         self.assertLessEqual(state.wins, 5)
         self.assertGreaterEqual(state.game_idx, 0)
+
+    def test_scouting_is_shown_in_run(self):
+        lines = []
+        r = TacticianRun(seed=3, auto=True, quiet=True)
+        r.log = lines.append
+        r.start()
+        self.assertTrue(any("赛前侦察" in line for line in lines))
 
     def test_auto_run_deterministic(self):
         def play(seed):
