@@ -121,6 +121,7 @@ class TacticianRun:
             opp = make_opponent(game, self.rng)
             self.log(f"\n{'═' * 58}")
             self.log(f"  第 {game + 1} 场 · {opp.name}")
+            self.log(opp.scouting_report())
             match = Match(playbook=self.run.playbook, perks=self.run.perks,
                           opp=opp, rng=self.rng, boons=boons,
                           log=self.match_log, chooser=self._choose_action)
