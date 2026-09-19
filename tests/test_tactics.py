@@ -163,5 +163,38 @@ class TestNarrate(unittest.TestCase):
         self.assertIn("普通退防", narrate_defense(phase)[-1])
 
 
+class TestStreamer(unittest.TestCase):
+    """终端流式输出：节奏由内容推断（纯函数，不做真实 sleep）。"""
+
+    def setUp(self):
+        from hooprogue.streamer import TermStreamer
+        self.st = TermStreamer(speed=0.0)
+
+    def test_score_lines_are_slowest(self):
+        menu = self.st.pace("   [1] 外线远投（1体能/2分）命中≈42% 失误≈8%")
+        us = self.st.pace("  ▶ 外线远投 ✓ +2   【6:4】")
+        them = self.st.pace("  ◀ ✗ 对方 传切体系 得手 +2   【5:6】")
+        self.assertGreater(us[0], menu[0])          # 得分揭晓比菜单慢
+        self.assertGreater(them[0], us[0])          # 对方得分比我方更沉重
+        self.assertGreater(them[1], us[1])          # 停顿也更长
+
+    def test_rules_and_dividers_are_instant(self):
+        divider = self.st.pace("═" * 58)
+        menu = self.st.pace("   [2] 换防（1体能）对方命中≈40%")
+        self.assertEqual(divider[0], 0.0)
+        self.assertEqual(menu[1], 0.0)
+
+    def test_write_streams_to_buffer(self):
+        import io
+        buf = io.StringIO()
+        from hooprogue.streamer import TermStreamer
+        st = TermStreamer(file=buf, speed=0.0)
+        st.write("  ▶ 外线远投 ✓ +2")
+        st.say(["决策：外线远投"])
+        text = buf.getvalue()
+        self.assertIn("外线远投", text)
+        self.assertIn("决策", text)
+
+
 if __name__ == "__main__":
     unittest.main()

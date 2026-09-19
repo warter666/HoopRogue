@@ -11,7 +11,8 @@ import random
 from dataclasses import dataclass, field
 
 from .match import Match
-from .narrate import rank_defense, rank_offense
+from .narrate import (narrate_choice, narrate_defense, narrate_offense,
+                      rank_defense, rank_offense)
 from .opponent import make_opponent
 from .plays import (OFFENSE, PLAY_BY_ID, SCHEME_BY_ID, START_PLAYBOOK,
                     level_bonus, manual_lines)
@@ -85,7 +86,7 @@ class TacticianRun:
             def name_of(it):
                 tag = "" if it[3] else " ✗体能不足"
                 p = it[0]
-                return (f"{p.icon} {p.name}（{p.cost}体能/{p.pts}分）"
+                return (f"{p.name}（{p.cost}体能/{p.pts}分）"
                         f"命中≈{it[1]:.0%} 失误≈{it[2]:.0%}{tag}")
         else:
             items = phase["schemes"]
@@ -96,7 +97,7 @@ class TacticianRun:
             def name_of(it):
                 tag = "" if it[3] else " ✗体能不足"
                 s = it[0]
-                return (f"{s.icon} {s.name}（{s.cost}体能）"
+                return (f"{s.name}（{s.cost}体能）"
                         f"对方命中≈{it[1]:.0%} 造失误≈{it[2]:.0%}{tag}")
         for i, it in enumerate(items, 1):
             self.log(f"   [{i}] {name_of(it)}")
@@ -204,3 +205,27 @@ class TacticianRun:
 def show_manual(log):
     for line in manual_lines():
         log(line)
+
+
+def attach_coach(run: TacticianRun, say):
+    """观战模式：AI 教练先流式解说，再用与终端版一致的期望值函数决策。
+
+    say(lines) 由调用方提供（终端 = TermStreamer.say，GUI = 队列流式）。
+    解说与决策共用 narrate 的 rank 函数——想的和做的一致。
+    """
+    def choose(phase: dict) -> dict:
+        if phase["kind"] == "offense":
+            say(narrate_offense(phase))
+        else:
+            say(narrate_defense(phase))
+        return run._auto_action(phase)
+
+    orig_pick = run._pick
+
+    def pick(options: list, header: str) -> int:
+        idx = orig_pick(options, header)
+        say(narrate_choice(header, options, idx))
+        return idx
+
+    run._choose_action = choose
+    run._pick = pick

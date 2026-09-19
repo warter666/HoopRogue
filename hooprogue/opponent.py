@@ -19,7 +19,7 @@ GAMES = [
     dict(name="城市冠军队", rating=69, bluff=0.20, adapt=0.45, stamina=5, target=11),
     dict(name="战术大师", rating=76, bluff=0.30, adapt=0.55, stamina=6, target=15),
 ]
-GAME_TITLES = ["热身赛", "地区赛", "挑战赛", "半决赛", "☠ BOSS 决战"]
+GAME_TITLES = ["热身赛", "地区赛", "挑战赛", "半决赛", "BOSS 决战"]
 
 # 对手 personalities：进攻战术倾向模板
 PERSONALITIES = {

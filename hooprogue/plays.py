@@ -103,10 +103,10 @@ def manual_lines() -> list:
         cs = counters_of(p.id)
         ws = [s.name for s in DEFENSE if matchup(p.id, s.id)[0] > 0.05]
         lines.append(
-            f"  {p.icon} {p.name}（{p.pts}分/{p.cost}体能/{p.base:.0%}）"
+            f"  {p.name}（{p.pts}分/{p.cost}体能/{p.base:.0%}）"
             f"  被【{'、'.join(s.name for s in cs) or '—'}】克制"
             f"  强吃【{'、'.join(ws) or '—'}】")
     for s in DEFENSE:
-        lines.append(f"  {s.icon} {s.name}（{s.cost}体能）{s.desc}"
+        lines.append(f"  {s.name}（{s.cost}体能）{s.desc}"
                      + (f"  对方失误率 +{s.to_mod_all:.0%}" if s.to_mod_all else ""))
     return lines

@@ -22,18 +22,32 @@
 ## 运行
 
 ```bash
-python -m hooprogue              # 图形界面：我来指挥 / 观看 AI 教练
-python -m hooprogue --cli        # 终端模式（可叠加 --auto / --quiet / --seed）
+python -m hooprogue              # 终端流式模式（主线）：全部输出打字机化
+python -m hooprogue --auto       # 观战：AI 教练流式解说并决策
+python -m hooprogue --gui        # tkinter 图形界面（可选保留）
+python -m hooprogue --speed 0.3  # 流式速度倍率（0 = 瞬时，测试用）
 python -m hooprogue --manual     # 战术手册
 python -m unittest discover -s tests
 python tools/balance.py 100      # 平衡性标定
 ```
 
+### 直播节奏
+
+终端里所有输出都是打字机流式，速度由比赛事件决定——节奏本身在叙事：
+
+* 我方出手结果逐字缓慢揭晓，悬念停在"✓ +2"出现之前；
+* 对方得分更慢、停顿更长，沉重感；
+* 打铁、失误、防守成功中速急促，连续攻防像快节奏的文字实况；
+* 节末、骤死、BOSS 登场、赛前抉择之前刻意放慢铺垫；
+* 菜单与分隔线瞬时，不打断输入。
+
+表情只保留极少量功能用途，正文用文字符号（▶ ◀ ★ ✓ ✗）与缩进区分角色。
+
 ## AI 教练
 
-观战模式下，AI 教练像大模型一样流式输出思考过程——但没有任何 API：
-`narrate.rank_*` 期望值函数既是它的决策依据也是解说词的数据源，
-全部来自真实对局状态，同种子同解说。
+观战模式下，AI 教练像大模型一样流式输出思考过程（终端以竖线侧栏
+`  |` 标记）——但没有任何 API：`narrate.rank_*` 期望值函数既是它的
+决策依据也是解说词的数据源，全部来自真实对局状态，同种子同解说。
 
 ## 平衡性
 
