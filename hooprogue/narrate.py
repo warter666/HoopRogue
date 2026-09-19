@@ -32,9 +32,9 @@ def narrate_offense(phase: dict) -> list:
     lines = []
     tg = phase["telegraph"]
     tops = _top2(tg)
-    lines.append("📡 对方防守倾向: "
+    lines.append("对方防守倾向: "
                  + " / ".join(f"{SCHEME_BY_ID[k].name} {v:.0%}" for k, v in tops))
-    lines.append(f"⚡ 体能 {phase['stamina']}，盘点可用的战术…")
+    lines.append(f"体能 {phase['stamina']}，盘点可用的战术…")
     ranked = rank_offense(phase)
     if not ranked:
         return lines + ["体能耗尽，只能勉强出手…", "▶ 决策：😮 勉强出手"]
@@ -49,7 +49,7 @@ def narrate_offense(phase: dict) -> list:
     if alt is not None:
         lines.append(f"权衡：{best.name} 期望 {best_val:.2f} vs "
                      f"{alt[0].name} {alt[1]:.2f}")
-    lines.append(f"▶ 决策：{best.icon} {best.name}")
+    lines.append(f"▶ 决策：{best.name}")
     return lines
 
 
@@ -58,9 +58,9 @@ def narrate_defense(phase: dict) -> list:
     tg = phase["telegraph"]
     tops = _top2(tg)
     from .plays import PLAY_BY_ID
-    lines.append("📡 对方进攻意图: "
+    lines.append("对方进攻意图: "
                  + " / ".join(f"{PLAY_BY_ID[k].name} {v:.0%}" for k, v in tops))
-    lines.append(f"⚡ 体能 {phase['stamina']}，考虑防守方案…")
+    lines.append(f"体能 {phase['stamina']}，考虑防守方案…")
     ranked = rank_defense(phase)
     if not ranked:
         return lines + ["体能耗尽，只能普通退防…", "▶ 决策：😴 普通退防"]
@@ -71,10 +71,10 @@ def narrate_defense(phase: dict) -> list:
         lines.append(f"✧ {best.name} 正好克制对方 {PLAY_BY_ID[top_play].name}")
     if mm[1] > 0.05:
         lines.append(f"★ 该方案还能抬高对方失误率")
-    lines.append(f"▶ 决策：{best.icon} {best.name}")
+    lines.append(f"▶ 决策：{best.name}")
     return lines
 
 
 def narrate_choice(header: str, options: list, picked: int) -> list:
     """通用选择（赛前抉择/加练）的简短解说。"""
-    return [f"🤔 {header}", f"候选 {len(options)} 项…", f"▶ 决策：{options[picked]}"]
+    return [f"{header}", f"候选 {len(options)} 项…", f"▶ 决策：{options[picked]}"]

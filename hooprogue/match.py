@@ -65,10 +65,10 @@ class Match:
 
     # ------------------------------------------------------------------ 主流程
     def play(self) -> MatchResult:
-        self.log(f"\n  ⚔ {self.opp.name}（评分 {self.opp.rating}）"
+        self.log(f"\n  对阵 {self.opp.name}（评分 {self.opp.rating}）"
                  f"  ·  街球规则：先到 {self.opp.target} 分")
         if self.opp.is_boss:
-            self.log("  ☠ BOSS：会演戏的播报 + 每节多 1 点体能")
+            self.log("  BOSS：会演戏的播报 + 每节多 1 点体能")
         for q in range(1, QTRS + 1):
             self._q = q
             self.us.stamina = PLAYER_STAMINA + (1 if self.boons.get("rest") else 0)
@@ -76,7 +76,7 @@ class Match:
             self.us.q_pts.append(0)
             self.them.q_pts.append(0)
             if q == QTRS:
-                self.log("  ⏱ 末节：关键时刻")
+                self.log("  末节：关键时刻")
             player_first = q % 2 == 1
             self._def_poss_in_q = 0
             for i in range(POSS_PER_Q):
@@ -98,13 +98,13 @@ class Match:
         while self.us.pts == self.them.pts:
             pairs += 1
             if pairs > SUDDEN_DEATH_CAP:
-                self.log("  🎲 连续骤死未分胜负，掷签决定球权归属")
+                self.log("  连续骤死未分胜负，掷签决定球权归属")
                 if self.rng.random() < 0.5:
                     self._score_us(1, "  ▶ 掷签得手 +1")
                 else:
                     self._score_them(1, "  ◀ 掷签得手 +1")
                 break
-            self.log("  ⚡ 骤死回合！")
+            self.log("  骤死回合！")
             self.poss_player_defense()
             if self.us.pts != self.them.pts:
                 break
@@ -149,20 +149,20 @@ class Match:
         roll = self.rng.random()
         if roll < p_to:
             self.us.turnovers += 1
-            self.log(f"  ▶ {play.icon} {play.name} ✗ 失误！球权转换")
+            self.log(f"  ▶ {play.name} ✗ 失误！球权转换")
             return
         if roll < p_to + p_make:
-            self._score_us(play.pts, f"▶ {play.icon} {play.name} ✓ +{play.pts}")
+            self._score_us(play.pts, f"▶ {play.name} ✓ +{play.pts}")
             return
         # 打铁 → 进攻篮板 → 自动补篮
         if self.rng.random() < ORB_BASE + self.perks.get("orb", 0.0):
-            self.log(f"  ▶ {play.icon} {play.name} ✗ 打铁… ↻ 前场篮板！")
+            self.log(f"  ▶ {play.name} ✗ 打铁… 前场篮板！")
             if self.rng.random() < PUTBACK_P:
-                self._score_us(1, "  ▶ ↻ 补篮得手 +1")
+                self._score_us(1, "  ▶ 补篮得手 +1")
             else:
-                self.log("  ▶ ↻ 补篮不中")
+                self.log("  ▶ 补篮不中")
         else:
-            self.log(f"  ▶ {play.icon} {play.name} ✗ 打铁，对方篮板")
+            self.log(f"  ▶ {play.name} ✗ 打铁，对方篮板")
 
     def _shown_defense_dist(self, actual) -> dict:
         """对手防守方案播报：播报其防守策略权重（带噪声/演技）。
@@ -207,18 +207,18 @@ class Match:
         _, opp_make, opp_to, _ = entry
         roll = self.rng.random()
         if roll < opp_to:
-            self.log(f"  ◀ {scheme.icon} {scheme.name} ★ 逼出对方失误！")
+            self.log(f"  ◀ {scheme.name} ★ 逼出对方失误！")
             return
         if roll < opp_to + opp_make:
             self._score_them(play.pts,
-                             f"◀ ✗ 对方 {play.icon} {play.name} 得手 +{play.pts}")
+                             f"◀ ✗ 对方 {play.name} 得手 +{play.pts}")
             return
         if self.rng.random() < ORB_BASE - 0.02 + (self.opp.rating - 42) * 0.002:
-            self.log(f"  ◀ {scheme.icon} {scheme.name} 打铁… 对方前场篮板")
+            self.log(f"  ◀ {scheme.name} 打铁… 对方前场篮板")
             if self.rng.random() < PUTBACK_P - 0.05:
                 self._score_them(1, "  ◀ 对方补篮 +1")
         else:
-            self.log(f"  ◀ {scheme.icon} {scheme.name} 防守成功！")
+            self.log(f"  ◀ {scheme.name} 防守成功！")
 
     def _shown_offense_dist(self, actual) -> dict:
         if self.boons.get("intel"):

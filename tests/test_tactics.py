@@ -153,7 +153,7 @@ class TestNarrate(unittest.TestCase):
         # perim vs 盯人: (0.42-0.10)*2 - 0.048 = 0.592 > push 0.52
         self.assertEqual(ranked[0][0].id, "perim")
         lines = narrate_offense(phase)
-        self.assertIn("▶ 决策：🎯 外线远投", lines[-1])
+        self.assertIn("▶ 决策：外线远投", lines[-1])
 
     def test_empty_rank_falls_back(self):
         from hooprogue.narrate import narrate_defense, rank_defense

@@ -108,7 +108,7 @@ class MatchWorker(threading.Thread):
             if self.auto:
                 self._wrap_decision(run)
                 self.q.put(("ai_line", None))
-                self._stream(["🤖 AI 教练上线。观测比赛，权衡每一回合…"])
+                self._stream(["AI 教练上线。观测比赛，权衡每一回合…"])
             self.tactician = run
             state = run.start()
             self.q.put(("run_end", state))
@@ -150,13 +150,13 @@ class TacticianGUI:
         # 左：AI 教练 + 日志
         left = tk.Frame(mid, bg=C_BG)
         left.pack(side="left", fill="both", expand=True, padx=(10, 4), pady=8)
-        tk.Label(left, text="🤖 AI 教练", fg=C_ACCENT, bg=C_BG,
+        tk.Label(left, text="AI 教练（实时思考）", fg=C_ACCENT, bg=C_BG,
                  font=body, anchor="w").pack(fill="x")
         self.txt_ai = tk.Text(left, height=10, bg=C_PANEL, fg=C_TEXT,
                               font=mono, relief="flat", state="disabled",
                               wrap="word")
         self.txt_ai.pack(fill="both", expand=False, pady=(2, 8))
-        tk.Label(left, text="📜 比赛日志", fg=C_DIM, bg=C_BG,
+        tk.Label(left, text="比赛日志", fg=C_DIM, bg=C_BG,
                  font=body, anchor="w").pack(fill="x")
         self.txt_log = tk.Text(left, bg=C_PANEL2, fg=C_TEXT, font=mono,
                                relief="flat", state="disabled", wrap="word")
@@ -192,10 +192,10 @@ class TacticianGUI:
         tk.Label(self.decide_area,
                  text="5 场成长弧线\n没有技能卡\n只有战术板",
                  fg=C_TEXT, bg=C_BG, font=body, justify="left").pack(pady=18)
-        tk.Button(self.decide_area, text="🎮 我来指挥", fg=C_BG, bg=C_ACCENT,
+        tk.Button(self.decide_area, text="我来指挥（交互）", fg=C_BG, bg=C_ACCENT,
                   font=header, relief="flat", padx=18, pady=8,
                   command=lambda: self.start_run(auto=False)).pack(fill="x", pady=6)
-        tk.Button(self.decide_area, text="🤖 观看 AI 教练", fg=C_TEXT,
+        tk.Button(self.decide_area, text="观看 AI 教练（观战）", fg=C_TEXT,
                   bg=C_PANEL2, font=header, relief="flat", padx=18, pady=8,
                   command=lambda: self.start_run(auto=True)).pack(fill="x", pady=6)
         tk.Button(self.decide_area, text="退出", fg=C_DIM, bg=C_BG,
@@ -258,9 +258,9 @@ class TacticianGUI:
             tag = "p"
         elif s.startswith("◀"):
             tag = "o"
-        elif "✅" in s or "🏆" in s:
+        elif "拿下" in s or "冠军" in s:
             tag = "good"
-        elif "💀" in s:
+        elif "RUN OVER" in s:
             tag = "bad"
         elif "篮球" in s or "第" in s and "场" in s:
             tag = "gold"
@@ -321,7 +321,7 @@ class TacticianGUI:
                      text="工作线程异常，详见日志").pack(pady=10)
         else:
             if state.champion:
-                self.lbl_decide.config(text="🏆 冠军！")
+                self.lbl_decide.config(text="冠军！")
                 sub = f"5 场全胜封王！总胜场 {state.wins}"
             else:
                 self.lbl_decide.config(text="💀 RUN OVER")
