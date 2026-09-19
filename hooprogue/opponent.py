@@ -22,6 +22,12 @@ GAMES = [
 GAME_TITLES = ["热身赛", "地区赛", "挑战赛", "半决赛", "BOSS 决战"]
 
 # 对手 personalities：进攻战术倾向模板
+PERSONALITY_META = {
+    "outside": ("外线火力", "更偏好远投与传切，外线是主要威胁。"),
+    "inside": ("内线压迫", "更偏好低位、冲框与挡拆，禁区是主要威胁。"),
+    "balanced": ("均衡体系", "没有明显单一倾向，需要根据前几回合继续观察。"),
+}
+
 PERSONALITIES = {
     "outside": {"perim": 0.34, "motion": 0.20, "pnr": 0.16, "push": 0.12,
                 "backdoor": 0.08, "iso": 0.06, "post": 0.04},
@@ -47,6 +53,9 @@ class Opponent:
     target: int
     is_boss: bool
     offense_weights: dict
+    style_id: str
+    style_name: str
+    style_hint: str
     player_usage: dict = field(default_factory=dict)   # 我方战术使用统计
     last_player_scheme: str | None = None
 
@@ -125,4 +134,6 @@ def make_opponent(game_idx: int, rng: random.Random) -> Opponent:
         rating=float(g["rating"]), bluff_p=g["bluff"], adapt_p=g["adapt"],
         stamina_per_q=g["stamina"], target=g["target"],
         is_boss=(game_idx == 4), offense_weights=weights,
+        style_id=style, style_name=PERSONALITY_META[style][0],
+        style_hint=PERSONALITY_META[style][1],
     )
